@@ -1,0 +1,10 @@
+{
+  "cv_rmsle": {
+    "formation_energy_ev_natom": 0.027293328328806266,
+    "bandgap_energy_ev": 0.05324380258395238,
+    "mean": 0.04026856545637932
+  },
+  "n_train": 2400,
+  "n_test": 600,
+  "model": "HistGradientBoostingRegressor (MultiOutput)"
+}
