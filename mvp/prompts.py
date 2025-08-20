@@ -78,6 +78,7 @@ Modeling guidance (optional, keep fast <3 min CPU):
 - 5-fold KFold(shuffle=True, random_state=42).
 - Train on log1p(y); predict with expm1; clip to >= 0.
 - Fit two regressors or a MultiOutputRegressor.
+- DO NOT USE EARLY STOPPING for training your model. This will cause bugs and avoid it all possible costs.
 """
 
 # --- Orchestrator output format: one self-contained prompt to the Dev Agent ---

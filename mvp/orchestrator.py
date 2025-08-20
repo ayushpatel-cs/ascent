@@ -23,22 +23,34 @@ class Orchestrator:
 
     def __init__(
         self,
-        problem_description: str, 
+        problem_description: str,
         blackboard: str,
-        iteration: int, 
+        iteration: int,
+        max_iterations: Optional[int] = None,  # NEW: planning budget
     ) -> None:
         self.problem_description = (problem_description or "").strip()
         self.blackboard = (blackboard or "").strip()
         self.iteration = iteration
+        # If caller doesn't supply, default to "10 more tasks after current"
+        # i.e., plan horizon = current index + 11 total (current + 10).
+        self.max_iterations = max_iterations if max_iterations is not None else (iteration + 11)
+
     # -------------------- internals --------------------
 
     def _build_prompt(self) -> str:
-        self.dev_description = DEV_CONTEXT_STARTER.replace("{id}", str(self.iteration))
+        # Keep your {id} run folder behavior
+        run_dir = str(self.iteration)
+        self.dev_description = DEV_CONTEXT_STARTER.replace("{id}", run_dir)
+
+        remaining_tasks = max(self.max_iterations - self.iteration - 1, 0)
+        max_iterations_minus_1 = self.max_iterations - 1
+
         return ORCHESTRATOR_TASK_TEMPLATE.format(
             problem_description=self.problem_description.strip(),
             dev_description=self.dev_description.strip(),
             blackboard=self.blackboard.strip(),
         )
+
     def orchestrator_step(
         self,
         temperature: float = 0.2,

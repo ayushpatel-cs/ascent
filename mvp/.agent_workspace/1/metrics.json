@@ -1,0 +1,10 @@
+{
+    "cv_rmsle": {
+        "formation_energy_ev_natom": 0.037915147407526203,
+        "bandgap_energy_ev": 0.10248154635849145,
+        "mean": 0.07019834688300883
+    },
+    "n_train": 2400,
+    "n_test": 600,
+    "model": "XGBoost (independent models per target)"
+}

@@ -1,0 +1,10 @@
+{
+    "cv_rmsle": {
+        "formation_energy_ev_natom": 0.035294417137145734,
+        "bandgap_energy_ev": 0.09657249587326569,
+        "mean": 0.06593345650520571
+    },
+    "n_train": 2400,
+    "n_test": 600,
+    "model": "RandomForestRegressor (MultiOutputRegressor)"
+}

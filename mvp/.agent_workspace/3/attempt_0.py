@@ -1,15 +1,12 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import KFold
-from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_log_error
-import lightgbm as lgb
-import json
+from sklearn.multioutput import MultiOutputRegressor
 
 
 def rmsle(y_true, y_pred):
-    # Ensure predictions are non-negative before log1p
-    y_pred = np.maximum(y_pred, 0)
     return np.sqrt(mean_squared_log_error(y_true, y_pred))
 
 
@@ -21,149 +18,84 @@ except FileNotFoundError:
     print("Ensure train.csv and test.csv are in the same directory.")
     exit()
 
-# Feature Engineering and Selection
-features = [
-    "spacegroup",
-    "number_of_total_atoms",
-    "percent_atom_al",
-    "percent_atom_ga",
-    "percent_atom_in",
-    "lattice_vector_1_ang",
-    "lattice_vector_2_ang",
-    "lattice_vector_3_ang",
-    "lattice_angle_alpha_degree",
-    "lattice_angle_beta_degree",
-    "lattice_angle_gamma_degree",
-]
-target1 = "formation_energy_ev_natom"
-target2 = "bandgap_energy_ev"
+# Prepare data
+TARGETS = ["formation_energy_ev_natom", "bandgap_energy_ev"]
+FEATURES = [col for col in train_df.columns if col not in ["id"] + TARGETS]
 
-X_train = train_df[features]
-y_train = train_df[[target1, target2]]
-X_test = test_df[features]
-test_ids = test_df["id"]
+X = train_df[FEATURES]
+y = train_df[TARGETS]
+X_test = test_df[FEATURES]
 
-# Preprocessing
-# One-hot encode spacegroup
-X_train = pd.get_dummies(X_train, columns=["spacegroup"], prefix="spacegroup")
-X_test = pd.get_dummies(X_test, columns=["spacegroup"], prefix="spacegroup")
+# Ensure all feature columns are numeric, coercing errors to NaN
+for col in FEATURES:
+    X[col] = pd.to_numeric(X[col], errors="coerce")
+    X_test[col] = pd.to_numeric(X_test[col], errors="coerce")
 
-# Align columns - crucial for consistent feature sets
-train_cols = X_train.columns
-test_cols = X_test.columns
+# Simple imputation for any NaNs that might have been created
+for col in FEATURES:
+    X[col] = X[col].fillna(X[col].median())
+    X_test[col] = X_test[col].fillna(X_test[col].median())
 
-missing_in_test = set(train_cols) - set(test_cols)
-for c in missing_in_test:
-    X_test[c] = 0
-
-missing_in_train = set(test_cols) - set(train_cols)
-for c in missing_in_train:
-    X_train[c] = 0
-
-X_test = X_test[train_cols]  # Ensure order is the same
-
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-X_train_scaled = pd.DataFrame(X_train_scaled, columns=X_train.columns)
-X_test_scaled = pd.DataFrame(X_test_scaled, columns=X_test.columns)
-
-
-# Model Training (LightGBM)
+# Model Training
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
+oof_preds = np.zeros((len(train_df), len(TARGETS)))
+test_preds = np.zeros((len(test_df), len(TARGETS)))
 
-cv_rmsle_scores = {"formation_energy_ev_natom": [], "bandgap_energy_ev": []}
-predictions_formation_energy = np.zeros(len(X_test_scaled))
-predictions_bandgap = np.zeros(len(X_test_scaled))
+for fold, (train_idx, val_idx) in enumerate(kf.split(X, y)):
+    X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+    y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
-# Target transformations
-y_train_log1p_formation_energy = np.log1p(y_train[target1])
-y_train_log1p_bandgap = np.log1p(y_train[target2])
+    # Train RandomForestRegressor for each target
+    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    multi_output_model = MultiOutputRegressor(model)
 
-# Train for formation_energy_ev_natom
-model_formation_energy = lgb.LGBMRegressor(random_state=42)
-for fold, (train_index, val_index) in enumerate(
-    kf.split(X_train_scaled, y_train_log1p_formation_energy)
-):
-    X_train_fold, X_val_fold = (
-        X_train_scaled.iloc[train_index],
-        X_train_scaled.iloc[val_index],
-    )
-    y_train_fold, y_val_fold = (
-        y_train_log1p_formation_energy.iloc[train_index],
-        y_train_log1p_formation_energy.iloc[val_index],
-    )
+    # Log transform targets
+    y_train_log = np.log1p(y_train)
+    y_val_log = np.log1p(y_val)
 
-    model_formation_energy.fit(X_train_fold, y_train_fold)
-    val_preds = model_formation_energy.predict(X_val_fold)
-    cv_rmsle_scores["formation_energy_ev_natom"].append(
-        rmsle(np.expm1(y_val_fold), np.expm1(val_preds))
-    )
-    predictions_formation_energy += (
-        model_formation_energy.predict(X_test_scaled) / kf.n_splits
-    )
+    multi_output_model.fit(X_train, y_train_log)
 
-# Train for bandgap_energy_ev
-model_bandgap = lgb.LGBMRegressor(random_state=42)
-for fold, (train_index, val_index) in enumerate(
-    kf.split(X_train_scaled, y_train_log1p_bandgap)
-):
-    X_train_fold, X_val_fold = (
-        X_train_scaled.iloc[train_index],
-        X_train_scaled.iloc[val_index],
-    )
-    y_train_fold, y_val_fold = (
-        y_train_log1p_bandgap.iloc[train_index],
-        y_train_log1p_bandgap.iloc[val_index],
-    )
+    # Predict on validation set
+    val_preds_log = multi_output_model.predict(X_val)
+    val_preds = np.expm1(val_preds_log)
+    val_preds[val_preds < 0] = 0  # Clip predictions to be non-negative
 
-    model_bandgap.fit(X_train_fold, y_train_fold)
-    val_preds = model_bandgap.predict(X_val_fold)
-    cv_rmsle_scores["bandgap_energy_ev"].append(
-        rmsle(np.expm1(y_val_fold), np.expm1(val_preds))
-    )
-    predictions_bandgap += model_bandgap.predict(X_test_scaled) / kf.n_splits
+    oof_preds[val_idx] = val_preds
 
-# Calculate mean CV RMSLE
-mean_cv_rmsle_formation_energy = np.mean(cv_rmsle_scores["formation_energy_ev_natom"])
-mean_cv_rmsle_bandgap = np.mean(cv_rmsle_scores["bandgap_energy_ev"])
-mean_cv_rmsle_overall = (mean_cv_rmsle_formation_energy + mean_cv_rmsle_bandgap) / 2
+    # Predict on test set
+    test_preds_log = multi_output_model.predict(X_test)
+    test_preds_fold = np.expm1(test_preds_log)
+    test_preds_fold[test_preds_fold < 0] = 0  # Clip predictions to be non-negative
+    test_preds += test_preds_fold / kf.n_splits
 
-print(f"CV RMSLE - Formation Energy: {mean_cv_rmsle_formation_energy:.4f}")
-print(f"CV RMSLE - Bandgap Energy: {mean_cv_rmsle_bandgap:.4f}")
-print(f"Overall Mean CV RMSLE: {mean_cv_rmsle_overall:.4f}")
-
-# Apply inverse transform and clip predictions
-final_predictions_formation_energy = np.maximum(
-    np.expm1(predictions_formation_energy), 0
-)
-final_predictions_bandgap = np.maximum(np.expm1(predictions_bandgap), 0)
+# Calculate OOF RMSLE
+oof_rmsle_scores = {}
+for i, target in enumerate(TARGETS):
+    oof_rmsle_scores[target] = rmsle(y[target], oof_preds[:, i])
+oof_rmsle_scores["mean"] = np.mean(list(oof_rmsle_scores.values()))
 
 # Create submission file
-submission_df = pd.DataFrame(
-    {
-        "id": test_ids,
-        target1: final_predictions_formation_energy,
-        target2: final_predictions_bandgap,
-    }
-)
-submission_df.to_csv("submission.csv", index=False)
+submission_df = pd.DataFrame({"id": test_df["id"]})
+for i, target in enumerate(TARGETS):
+    submission_df[target] = test_preds[:, i]
+
+submission_df.to_csv("./3/submission.csv", index=False)
 
 # Create metrics file
-metrics = {
-    "cv_rmsle": {
-        target1: mean_cv_rmsle_formation_energy,
-        target2: mean_cv_rmsle_bandgap,
-        "mean": mean_cv_rmsle_overall,
-    },
+metrics_data = {
+    "cv_rmsle": oof_rmsle_scores,
     "n_train": len(train_df),
     "n_test": len(test_df),
-    "model": "LightGBM (5-fold CV)",
+    "model": "RandomForestRegressor (MultiOutputRegressor)",
 }
-with open("metrics.json", "w") as f:
-    json.dump(metrics, f, indent=4)
+import json
 
-print("\nSubmission file 'submission.csv' created successfully.")
-print("Metrics file 'metrics.json' created successfully.")
-print(f"\nDataset shapes: Train={train_df.shape}, Test={test_df.shape}")
+with open("./3/metrics.json", "w") as f:
+    json.dump(metrics_data, f, indent=4)
+
+# Print summary
+print(f"Train dataset shape: {train_df.shape}")
+print(f"Test dataset shape: {test_df.shape}")
+print("\nCross-validation RMSLE scores:")
+for target, score in oof_rmsle_scores.items():
+    print(f"- {target}: {score:.4f}")

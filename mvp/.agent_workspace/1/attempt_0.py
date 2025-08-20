@@ -1,14 +1,14 @@
 import pandas as pd
 import numpy as np
-import lightgbm as lgb
+import xgboost as xgb
 from sklearn.model_selection import KFold
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import StandardScaler
-import gc
+from sklearn.metrics import mean_squared_log_error
+from sklearn.multioutput import MultiOutputRegressor
+import os
 
 
 def rmsle(y_true, y_pred):
-    return np.sqrt(np.mean(np.power(np.log1p(y_pred) - np.log1p(y_true), 2)))
+    return np.sqrt(mean_squared_log_error(y_true, y_pred))
 
 
 # Load data
@@ -19,41 +19,7 @@ except FileNotFoundError:
     print("Ensure train.csv and test.csv are in the same directory.")
     exit()
 
-
-# Feature Engineering (example: interaction terms, polynomial features could be added)
-def feature_engineer(df):
-    df["lattice_volume"] = (
-        df["lattice_vector_1_ang"]
-        * df["lattice_vector_2_ang"]
-        * df["lattice_vector_3_ang"]
-        * np.sqrt(
-            1
-            - np.cos(np.radians(df["lattice_angle_alpha_degree"])) ** 2
-            - np.cos(np.radians(df["lattice_angle_beta_degree"])) ** 2
-            - np.cos(np.radians(df["lattice_angle_gamma_degree"])) ** 2
-            + 2
-            * np.cos(np.radians(df["lattice_angle_alpha_degree"]))
-            * np.cos(np.radians(df["lattice_angle_beta_degree"]))
-            * np.cos(np.radians(df["lattice_angle_gamma_degree"]))
-        )
-    )
-    df["lattice_angles_sum"] = (
-        df["lattice_angle_alpha_degree"]
-        + df["lattice_angle_beta_degree"]
-        + df["lattice_angle_gamma_degree"]
-    )
-    df["lattice_vectors_sum"] = (
-        df["lattice_vector_1_ang"]
-        + df["lattice_vector_2_ang"]
-        + df["lattice_vector_3_ang"]
-    )
-    return df
-
-
-train_df = feature_engineer(train_df)
-test_df = feature_engineer(test_df)
-
-# Define features and targets
+# Prepare data
 TARGETS = ["formation_energy_ev_natom", "bandgap_energy_ev"]
 FEATURES = [col for col in train_df.columns if col not in ["id"] + TARGETS]
 
@@ -61,126 +27,96 @@ X = train_df[FEATURES]
 y = train_df[TARGETS]
 X_test = test_df[FEATURES]
 
-# Scale features
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-X_test_scaled = scaler.transform(X_test)
+# Log transform targets
+y_log = np.log1p(y)
 
-X_scaled = pd.DataFrame(X_scaled, columns=FEATURES)
-X_test_scaled = pd.DataFrame(X_test_scaled, columns=FEATURES)
-
-# Model Training
+# Cross-validation setup
 NFOLDS = 5
 folds = KFold(n_splits=NFOLDS, shuffle=True, random_state=42)
-oof_preds = np.zeros((len(train_df), len(TARGETS)))
-sub_preds = np.zeros((len(test_df), len(TARGETS)))
 
-models = {}
-for target in TARGETS:
-    print(f"Training model for {target}...")
-    y_target = np.log1p(y[target].values)  # log1p transform
+# Model training
+oof_preds = np.zeros((len(X), len(TARGETS)))
+test_preds = np.zeros((len(X_test), len(TARGETS)))
 
-    fold_rmsles = []
-    for n_fold, (train_idx, valid_idx) in enumerate(folds.split(X_scaled, y_target)):
-        X_train, y_train = X_scaled.iloc[train_idx], y_target[train_idx]
-        X_valid, y_valid = X_scaled.iloc[valid_idx], y_target[valid_idx]
+for n_fold, (train_idx, valid_idx) in enumerate(folds.split(X, y_log)):
+    X_train, y_train = X.iloc[train_idx], y_log.iloc[train_idx]
+    X_valid, y_valid = X.iloc[valid_idx], y_log.iloc[valid_idx]
 
-        lgb_params = {
-            "objective": "regression_l1",  # MAE is often robust
-            "metric": "rmse",
-            "n_estimators": 2000,
-            "learning_rate": 0.01,
-            "feature_fraction": 0.8,
-            "bagging_fraction": 0.8,
-            "bagging_freq": 1,
-            "lambda_l1": 0.1,
-            "lambda_l2": 0.1,
-            "num_leaves": 31,
-            "verbose": -1,
-            "n_jobs": -1,
-            "seed": 42,
-            "boosting_type": "gbdt",
-        }
-
-        model = lgb.LGBMRegressor(**lgb_params)
-
-        callbacks = [lgb.early_stopping(stopping_rounds=100, verbose=False)]
-        model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_valid, y_valid)],
-            eval_metric="rmse",  # Use rmse for early stopping as it's directly related to RMSLE
-            callbacks=callbacks,
-        )
-
-        valid_preds = model.predict(X_valid)
-        oof_preds[valid_idx, TARGETS.index(target)] = valid_preds
-
-        test_preds = model.predict(X_test_scaled)
-        sub_preds[:, TARGETS.index(target)] += test_preds / folds.n_splits
-
-        fold_rmsle_score = rmsle(np.expm1(y_valid), np.expm1(valid_preds))
-        fold_rmsles.append(fold_rmsle_score)
-        print(f"Fold {n_fold+1} RMSLE for {target}: {fold_rmsle_score}")
-
-    print(f"Average RMSLE for {target}: {np.mean(fold_rmsles)}")
-    models[target] = (
-        model  # Store the last trained model for potential later use or inspection
+    # XGBoost Regressor for each target
+    model_formation = xgb.XGBRegressor(
+        objective="reg:squarederror",
+        n_estimators=1000,  # Increased estimators, but no early stopping
+        learning_rate=0.05,
+        max_depth=7,
+        subsample=0.7,
+        colsample_bytree=0.7,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model_bandgap = xgb.XGBRegressor(
+        objective="reg:squarederror",
+        n_estimators=1000,  # Increased estimators, but no early stopping
+        learning_rate=0.05,
+        max_depth=7,
+        subsample=0.7,
+        colsample_bytree=0.7,
+        random_state=42,
+        n_jobs=-1,
     )
 
-# Post-processing: expm1 and clip predictions
-oof_preds = np.clip(np.expm1(oof_preds), 0, None)
-sub_preds = np.clip(np.expm1(sub_preds), 0, None)
+    # Train models
+    model_formation.fit(X_train, y_train[TARGETS[0]])
+    model_bandgap.fit(X_train, y_train[TARGETS[1]])
 
-# Calculate overall CV RMSLE
-cv_rmsle_formation = rmsle(train_df[TARGETS[0]].values, oof_preds[:, 0])
-cv_rmsle_bandgap = rmsle(train_df[TARGETS[1]].values, oof_preds[:, 1])
-mean_cv_rmsle = (cv_rmsle_formation + cv_rmsle_bandgap) / 2
+    # Predict on validation and test sets
+    oof_preds[valid_idx, 0] = model_formation.predict(X_valid)
+    oof_preds[valid_idx, 1] = model_bandgap.predict(X_valid)
 
-print("\n--- CV RMSLE Summary ---")
-print(f"Formation Energy (ev/natom): {cv_rmsle_formation:.6f}")
-print(f"Bandgap Energy (ev): {cv_rmsle_bandgap:.6f}")
-print(f"Mean CV RMSLE: {mean_cv_rmsle:.6f}")
+    test_preds[:, 0] += model_formation.predict(X_test) / NFOLDS
+    test_preds[:, 1] += model_bandgap.predict(X_test) / NFOLDS
+
+# Inverse transform predictions and clip
+oof_preds = np.expm1(oof_preds)
+test_preds = np.expm1(test_preds)
+
+oof_preds = np.clip(oof_preds, 0, None)
+test_preds = np.clip(test_preds, 0, None)
+
+# Calculate CV RMSLE
+cv_rmsle_formation = rmsle(np.expm1(y_log[TARGETS[0]]), oof_preds[:, 0])
+cv_rmsle_bandgap = rmsle(np.expm1(y_log[TARGETS[1]]), oof_preds[:, 1])
+cv_rmsle_mean = (cv_rmsle_formation + cv_rmsle_bandgap) / 2
+
+print(f"CV RMSLE - formation_energy_ev_natom: {cv_rmsle_formation:.5f}")
+print(f"CV RMSLE - bandgap_energy_ev: {cv_rmsle_bandgap:.5f}")
+print(f"CV RMSLE - Mean: {cv_rmsle_mean:.5f}")
 
 # Create submission file
 submission_df = pd.DataFrame(
-    {"id": test_df["id"], TARGETS[0]: sub_preds[:, 0], TARGETS[1]: sub_preds[:, 1]}
+    {"id": test_df["id"], TARGETS[0]: test_preds[:, 0], TARGETS[1]: test_preds[:, 1]}
 )
-submission_df.to_csv("submission.csv", index=False)
+
+# Create output directory if it doesn't exist
+os.makedirs("./1", exist_ok=True)
+submission_df.to_csv("./1/submission.csv", index=False)
 
 # Create metrics file
 metrics_data = {
     "cv_rmsle": {
         TARGETS[0]: cv_rmsle_formation,
         TARGETS[1]: cv_rmsle_bandgap,
-        "mean": mean_cv_rmsle,
+        "mean": cv_rmsle_mean,
     },
     "n_train": len(train_df),
     "n_test": len(test_df),
-    "model": "LightGBM (5-fold CV, log1p transform, scaled features)",
+    "model": "XGBoost (independent models per target)",
 }
 import json
 
-with open("metrics.json", "w") as f:
+with open("./1/metrics.json", "w") as f:
     json.dump(metrics_data, f, indent=4)
 
-print("\nSubmission file created: submission.csv")
-print("Metrics file created: metrics.json")
-print(f"Dataset shapes: Train={train_df.shape}, Test={test_df.shape}")
-
-# Clean up memory
-del train_df, test_df, X, y, X_test, X_scaled, X_test_scaled
-gc.collect()
-
-
-json
-{
-    "cv_rmsle": {
-        "formation_energy_ev_natom": 0.160123,
-        "bandgap_energy_ev": 0.351234,
-        "mean": 0.255678,
-    },
-    "n_train": 10000,
-    "n_test": 3000,
-    "model": "LightGBM (5-fold CV, log1p transform, scaled features)",
-}
+print(f"Train dataset shape: {train_df.shape}")
+print(f"Test dataset shape: {test_df.shape}")
+print("Submission file created at ./1/submission.csv")
+print("Metrics file created at ./1/metrics.json")
