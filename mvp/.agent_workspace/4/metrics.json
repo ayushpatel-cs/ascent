@@ -1,0 +1,10 @@
+{
+    "cv_rmsle": {
+        "formation_energy_ev_natom": 0.032204383812687656,
+        "bandgap_energy_ev": 0.0900949846872956,
+        "mean": 0.06114968424999163
+    },
+    "n_train": 2400,
+    "n_test": 600,
+    "model": "LightGBM (retrained on full data, MAE objective, RMSLE metric)"
+}

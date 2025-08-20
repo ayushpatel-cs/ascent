@@ -1,0 +1,10 @@
+{
+    "cv_rmsle": {
+        "formation_energy_ev_natom": 0.03381861822790176,
+        "bandgap_energy_ev": 0.09353200635930943,
+        "mean": 0.0636753122936056
+    },
+    "n_train": 2400,
+    "n_test": 600,
+    "model": "LightGBM (5-fold CV)"
+}
