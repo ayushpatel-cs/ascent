@@ -1,10 +1,26 @@
 {
-    "cv_rmsle": {
-        "formation_energy_ev_natom": 0.06890703026826894,
-        "bandgap_energy_ev": 0.15508813564741233,
-        "mean": 0.11199758295784064
+    "target_1": {
+        "original_features_rmsle": 0.9020064619693725,
+        "engineered_features_rmsle": null,
+        "final_features_used": [
+            "feature1",
+            "feature2",
+            "feature3",
+            "feature1_x_feature2",
+            "feature2_div_feature3"
+        ],
+        "final_rmsle": 0.9020064619693725
     },
-    "n_train": 2400,
-    "n_test": 600,
-    "model": "HuberRegressor with MultiOutputRegressor"
+    "target_2": {
+        "original_features_rmsle": 0.889478432214934,
+        "engineered_features_rmsle": null,
+        "final_features_used": [
+            "feature1",
+            "feature2",
+            "feature3",
+            "feature1_x_feature2",
+            "feature2_div_feature3"
+        ],
+        "final_rmsle": 0.889478432214934
+    }
 }

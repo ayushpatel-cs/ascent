@@ -50,12 +50,12 @@ class SummaryAgent:
                 - Dev agent errors (stderr, trimmed): {stderr}
                 - Exec OK? {ok}
                 - Dev agent code response metrics: {metrics}
-                Write ONE compact block to append to the blackboard using this exact template:
+                Write ONE block to append to the blackboard using this exact template:
                 Iteration {iteration}
                 Asked: <1–2 sentences of what the dev was asked to do.>
                 Did:
-                <1–3 bullets of what the script actually did (models, features, CV, artifacts).>
-                Result: <success/failure and key numbers if present (e.g., RMSLE per target + mean); otherwise the most relevant outcome.>
+                <3–10 bullets of what the script actually did (models, features, CV, artifacts). Explain if these things went well (we should do them again, or not).>
+                Result: <success/failure and key numbers if present (e.g., RMSLE per target + mean); otherwise the most relevant outcome. If there were interesting features, figures, etc, include that as well. Additionally, if there were any mistakes, or things that didn't work that well, include that.>
 
                 Only return this block. No extra commentary.""".strip()
         
