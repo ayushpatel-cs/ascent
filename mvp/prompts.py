@@ -22,7 +22,7 @@ lattice_angle_alpha_degree, lattice_angle_beta_degree, lattice_angle_gamma_degre
 
 Environment constraints:
 CPU-only; deterministic; no internet or package installs.
-Use Python 3.10+, numpy, pandas, scikit-learn (optionally lightgbm/xgboost if already available).
+Use Python 3.10+, numpy, pandas, scikit-learn, lightgbm, xgboost if already available).
 """
 
 # --- Dev agent starter context (include verbatim in orchestrator prompts) ---
@@ -66,6 +66,7 @@ IO guidance:
     "model": "<brief description>"
   }
 - If creating visualizations (plots, charts, graphs), save them to ./{id}/ directory with descriptive filenames
+- DO NOT CREATE MORE THAN 5 IMAGES PER ITERATION. MAKE SURE TO CHOOSE CAREFULLY WHAT IS USEFUL TO PLOT.
 - Always print dataset shapes and key findings from your analysis
 
 Modeling guidance (optional, keep fast <3 min CPU):
@@ -80,6 +81,8 @@ Modeling guidance (optional, keep fast <3 min CPU):
 # --- Orchestrator output format: one self-contained prompt to the Dev Agent ---
 ORCHESTRATOR_TASK_TEMPLATE = """\
 You are the Orchestrator.
+
+CRITICAL: Your task is to work on the Kaggle competition described below. Do NOT create unrelated test scripts, games, or demos. Focus ONLY on the competition problem.
 
 Using the materials below, produce ONE concise, self-contained prompt addressed to the Dev Agent.
 

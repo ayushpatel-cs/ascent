@@ -11,7 +11,7 @@ from openai import OpenAI
 load_dotenv(override=False)
 
 # --- Model & client (OpenRouter-compatible) ---
-MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro")
 
 API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
 if not API_KEY:

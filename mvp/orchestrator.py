@@ -86,7 +86,7 @@ class Orchestrator:
     def orchestrator_step(
         self,
         temperature: float = 0.2,
-        max_tokens: int = 1200,
+        max_tokens: int = 8000,
     ) -> Dict[str, object]:
         """
         Build the prompt via Orchestrator and fetch the LLM reply.
@@ -138,10 +138,13 @@ class Orchestrator:
             temperature=temperature,
             max_tokens=max_tokens,
         )
+
+        # print ("RESPONSE: ", resp)
+        # print("=== ORCHESTRATOR PROMPT ===")
         # print(self._build_prompt()) 
-        # print("--------------------------------")
+        # print("=== ORCHESTRATOR RESPONSE ===")
         # print(resp.choices[0].message.content)
-        # print("--------------------------------")
+        # print("==============================")
 
         text = (resp.choices[0].message.content or "").strip()
         return {

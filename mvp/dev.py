@@ -50,11 +50,34 @@ class DevAgent:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": "Return ONLY a Python fenced block (```python ... ```)."},
         ]
-        resp = chat(messages=messages, temperature=self.temperature)
+        resp = chat(messages=messages, temperature=self.temperature, max_tokens=8000)
+        
+        # Debug the API response
+        # print(f"=== API RESPONSE DEBUG ===")
+        # print(f"Response choices length: {len(resp.choices)}")
+        # if resp.choices:
+        #     print(f"First choice finish_reason: {resp.choices[0].finish_reason}")
+        #     print(f"Message content is None: {resp.choices[0].message.content is None}")
+        #     print(f"Message content length: {len(resp.choices[0].message.content or '')}")
+        # print("==========================")
+        
         text = (resp.choices[0].message.content or "").strip()
+        
+        # Debug output
+        # print("=== DEV AGENT SYSTEM PROMPT ===")
+        # print(system_prompt[:500] + "..." if len(system_prompt) > 500 else system_prompt)
+        # print("=== DEV AGENT LLM RESPONSE ===")
+        # print(text[:500] + "..." if len(text) > 500 else text)
+        # print("==============================")
+        
         code = (extract_code(text) or "").strip()
-        if not code:
-            raise RuntimeError("No Python fenced block found in model response.")
+        # if not code:
+        #     print("=== EXTRACT_CODE DEBUG ===")
+        #     print(f"Text length: {len(text)}")
+        #     print(f"Full response text:")
+        #     print(text)
+        #     print("=== END RESPONSE ===")
+        #     raise RuntimeError("No Python fenced block found in model response.")
         return {"response_text": text, "code": code}
 
     def _build_prev_attempts_summary(
@@ -124,7 +147,7 @@ class DevAgent:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": repair_user},
         ]
-        resp = chat(messages=messages, temperature=self.temperature)
+        resp = chat(messages=messages, temperature=self.temperature, max_tokens=8000)
         text = (resp.choices[0].message.content or "").strip()
         code = (extract_code(text) or "").strip()
         if not code:
