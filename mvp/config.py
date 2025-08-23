@@ -12,6 +12,7 @@ load_dotenv(override=False)
 
 # --- Model & client (OpenRouter-compatible) ---
 MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro")
+LITE_MODEL = os.getenv("OPENROUTER_LITE_MODEL", "google/gemini-2.5-flash")
 
 API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
 if not API_KEY:
@@ -50,5 +51,5 @@ Message = Dict[str, str]
 Messages = List[Message]
 
 # Optional helper: call Chat Completions succinctly
-def chat(messages: Messages, **kwargs):
-    return client.chat.completions.create(model=MODEL, messages=messages, **kwargs)
+def chat(messages: Messages, is_lite: bool = False, **kwargs):
+    return client.chat.completions.create(model=LITE_MODEL if is_lite else MODEL, messages=messages, **kwargs)
