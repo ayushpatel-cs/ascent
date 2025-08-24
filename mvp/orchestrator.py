@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from prompts import PROBLEM_PROMPT, ORCHESTRATOR_TASK_TEMPLATE, DEV_CONTEXT_STARTER
+from prompts import FLEXIBLE_ORCHESTRATOR_PROMPT
 from config import client, MODEL, WORK_DIR
 
 
@@ -14,11 +14,11 @@ BlackboardT = Union[str, Dict[str, Any], List[Dict[str, Any]]]
 
 class Orchestrator:
     """
-    Minimal orchestrator: formats a single prompt to ask the LLM orchestrator
+    Contest-agnostic orchestrator: formats a prompt to ask the LLM orchestrator
     to produce the next task text for the dev agent.
 
     Notes:
-    - The problem description is hardcoded in prompts.PROBLEM_PROMPT.
+    - Takes problem description and dev context as parameters instead of hardcoded prompts
     - `blackboard` is assumed to be pre-summarized/free-text; if it's not a
       string, we JSON-dump it as-is.
     """
@@ -26,11 +26,13 @@ class Orchestrator:
     def __init__(
         self,
         problem_description: str,
+        dev_context: str,
         blackboard: str,
         iteration: int,
         max_iterations: Optional[int] = None,  # NEW: planning budget
     ) -> None:
         self.problem_description = (problem_description or "").strip()
+        self.dev_context = (dev_context or "").strip()
         self.blackboard = (blackboard or "").strip()
         self.iteration = iteration
         # If caller doesn't supply, default to "10 more tasks after current"
@@ -72,15 +74,17 @@ class Orchestrator:
     def _build_prompt(self) -> str:
         # Keep your {id} run folder behavior
         run_dir = str(self.iteration)
-        self.dev_description = DEV_CONTEXT_STARTER.replace("{id}", run_dir)
+        dev_context = self.dev_context.replace("{id}", run_dir)
 
         remaining_tasks = max(self.max_iterations - self.iteration - 1, 0)
 
-        return ORCHESTRATOR_TASK_TEMPLATE.format(
+        return FLEXIBLE_ORCHESTRATOR_PROMPT.format(
             problem_description=self.problem_description.strip(),
-            dev_description=self.dev_description.strip(),
-            blackboard=self.blackboard.strip(),
+            current_iteration=self.iteration,
+            total_iterations=self.max_iterations,
             iterations_remaining=remaining_tasks,
+            blackboard=self.blackboard.strip() if self.blackboard.strip() else "No previous work completed yet.",
+            dev_context=dev_context.strip(),
         )
 
     def orchestrator_step(

@@ -131,18 +131,35 @@ def analyze_data(competition_id: str, data_path: str) -> Dict[str, Any]:
     else:
         problem_type = "classification"
     
+    # Detect all available files in the competition directory
+    available_files = []
+    for file_path in comp_dir.iterdir():
+        if file_path.is_file() and not file_path.name.startswith('.'):
+            file_size = file_path.stat().st_size
+            if file_path.suffix == '.csv':
+                try:
+                    df = pd.read_csv(file_path)
+                    file_info = f"{file_path.name} (shape: {df.shape})"
+                except:
+                    file_info = f"{file_path.name} (size: {file_size:,} bytes)"
+            else:
+                file_info = f"{file_path.name} (size: {file_size:,} bytes)"
+            available_files.append(file_info)
+    
     info = {
         "competition_id": competition_id,
         "train_shape": train_df.shape,
         "test_shape": test_df.shape,
         "target_columns": targets,
         "feature_columns": features,
-        "problem_type": problem_type
+        "problem_type": problem_type,
+        "available_files": available_files
     }
     
     print(f"🔍 Analysis: {train_df.shape} train, {test_df.shape} test")
     print(f"🎯 Targets: {targets} ({problem_type})")
     print(f"📈 Features: {len(features)} columns")
+    print(f"📁 Available files: {len(available_files)} total")
     
     return info
 
@@ -170,9 +187,8 @@ def setup_competition(args) -> bool:
 Predict the following target(s) for each record in test.csv:
 {chr(10).join(f'- {target}' for target in info['target_columns'])}
 
-Local files:
-- ./train.csv  (features + targets, shape: {info['train_shape']})
-- ./test.csv   (features only, shape: {info['test_shape']})
+Available files:
+{chr(10).join(f'- ./{file_info}' for file_info in info['available_files'])}
 
 Feature columns in test.csv:
 {', '.join(info['feature_columns'])}
@@ -190,9 +206,8 @@ Objective:
 Predict the following target(s) for each record in test.csv:
 {chr(10).join(f'- {target}' for target in info['target_columns'])}
 
-Local files:
-- ./train.csv  (features + targets, shape: {info['train_shape']})
-- ./test.csv   (features only, shape: {info['test_shape']})
+Available files:
+{chr(10).join(f'- ./{file_info}' for file_info in info['available_files'])}
 
 Feature columns in test.csv:
 {', '.join(info['feature_columns'])}

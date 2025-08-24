@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config import WORK_DIR, DEFAULT_TIMEOUT_SEC, chat
+from config import DEFAULT_TIMEOUT_SEC, chat
+import config
 from interpreter import Interpreter
 from response import extract_code
 
@@ -20,6 +21,8 @@ def _tail(s: str, n: int = 5000) -> str:
 
 class DevAgent:
     """
+    Contest-agnostic dev agent that executes code based on orchestrator instructions.
+    
     - Uses the orchestrator's text verbatim as the SYSTEM prompt.
     - Asks for ONE fenced Python script.
     - Runs it with the Interpreter.
@@ -53,31 +56,34 @@ class DevAgent:
         resp = chat(messages=messages, temperature=self.temperature, max_tokens=8000)
         
         # Debug the API response
-        # print(f"=== API RESPONSE DEBUG ===")
-        # print(f"Response choices length: {len(resp.choices)}")
-        # if resp.choices:
-        #     print(f"First choice finish_reason: {resp.choices[0].finish_reason}")
-        #     print(f"Message content is None: {resp.choices[0].message.content is None}")
-        #     print(f"Message content length: {len(resp.choices[0].message.content or '')}")
-        # print("==========================")
+        print(f"=== API RESPONSE DEBUG ===")
+        print(f"Response choices length: {len(resp.choices)}")
+        if resp.choices:
+            print(f"First choice finish_reason: {resp.choices[0].finish_reason}")
+            print(f"Message content is None: {resp.choices[0].message.content is None}")
+            print(f"Message content length: {len(resp.choices[0].message.content or '')}")
+        print("==========================")
         
         text = (resp.choices[0].message.content or "").strip()
         
-        # Debug output
+        # Debug output (disabled)
         # print("=== DEV AGENT SYSTEM PROMPT ===")
         # print(system_prompt[:500] + "..." if len(system_prompt) > 500 else system_prompt)
         # print("=== DEV AGENT LLM RESPONSE ===")
-        # print(text[:500] + "..." if len(text) > 500 else text)
+        # print(f"Response length: {len(text)}")
+        # print(f"Response ends with: {repr(text[-100:])}")
+        # print(f"Contains closing backticks: {'```' in text}")
+        # print("First 500 chars:", text[:500] + "..." if len(text) > 500 else text)
         # print("==============================")
         
         code = (extract_code(text) or "").strip()
-        # if not code:
-        #     print("=== EXTRACT_CODE DEBUG ===")
-        #     print(f"Text length: {len(text)}")
-        #     print(f"Full response text:")
-        #     print(text)
-        #     print("=== END RESPONSE ===")
-        #     raise RuntimeError("No Python fenced block found in model response.")
+        if not code:
+            print("=== EXTRACT_CODE DEBUG ===")
+            print(f"Text length: {len(text)}")
+            print(f"Full response text:")
+            print(text)
+            print("=== END RESPONSE ===")
+            raise RuntimeError("No Python fenced block found in model response.")
         return {"response_text": text, "code": code}
 
     def _build_prev_attempts_summary(
@@ -158,8 +164,39 @@ class DevAgent:
     # --- Runner ------------------------------------------------------------
 
     def _run(self, code: str) -> Dict[str, Any]:
+        # Use config.WORK_DIR for code execution (the run directory)
+        # but ensure CSV files are accessible via symlinks
+        import os
+        
+        # Get current working directory (where CSV files are) and run directory
+        data_dir = os.getcwd()
+        run_dir = config.WORK_DIR
+        
+        # Create symlinks to CSV files in the run directory so code can find them
+        train_csv = os.path.join(data_dir, "train.csv")
+        test_csv = os.path.join(data_dir, "test.csv")
+        run_train_csv = os.path.join(run_dir, "train.csv")
+        run_test_csv = os.path.join(run_dir, "test.csv")
+        
+        # Create symlinks if they don't exist
+        if os.path.exists(train_csv) and not os.path.exists(run_train_csv):
+            try:
+                os.symlink(train_csv, run_train_csv)
+            except OSError:
+                # Fallback to copying if symlink fails
+                import shutil
+                shutil.copy2(train_csv, run_train_csv)
+                
+        if os.path.exists(test_csv) and not os.path.exists(run_test_csv):
+            try:
+                os.symlink(test_csv, run_test_csv)
+            except OSError:
+                # Fallback to copying if symlink fails
+                import shutil
+                shutil.copy2(test_csv, run_test_csv)
+        
         interp = Interpreter(
-            working_dir=WORK_DIR,
+            working_dir=config.WORK_DIR,
             timeout=self.timeout_sec,
             format_tb_ipython=False,
             agent_file_name="dev_run.py",
@@ -217,7 +254,7 @@ class DevAgent:
         max_repairs: Optional[int] = None,
     ) -> Dict[str, Any]:
         # Ensure iteration directory exists
-        iter_dir = WORK_DIR / str(iteration)
+        iter_dir = config.WORK_DIR / str(iteration)
         iter_dir.mkdir(parents=True, exist_ok=True)
 
         attempts: List[Dict[str, Any]] = []
@@ -226,6 +263,11 @@ class DevAgent:
         # 1) Initial attempt
         ask = self._ask_for_script(orchestrator_text)
         code = ask["code"]
+        
+        # Always save the raw response for debugging
+        (iter_dir / "attempt_0_raw_response.txt").write_text(ask["response_text"], encoding="utf-8")
+        
+        # Save the extracted code (or empty string if extraction failed)
         (iter_dir / "attempt_0.py").write_text(code, encoding="utf-8")
 
         exec_out = self._run(code)
@@ -297,6 +339,11 @@ class DevAgent:
                 break
 
             cur_code = fix["code"]
+            
+            # Always save the raw response for debugging
+            (iter_dir / f"attempt_{attempt_idx}_raw_response.txt").write_text(fix["response_text"], encoding="utf-8")
+            
+            # Save the extracted code
             (iter_dir / f"attempt_{attempt_idx}.py").write_text(cur_code, encoding="utf-8")
 
             exec_out = self._run(cur_code)

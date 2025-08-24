@@ -11,7 +11,7 @@ from response import trim_long_string
 
 
 class SummaryAgent:
-    """Minimal summary agent:
+    """Contest-agnostic summary agent:
     - Inputs: iteration index, orchestrator instructions (dev prompt), current blackboard,
               and the dev agent report (code + outputs).
     - Produces: a short markdown block summarizing Asked/Did/Result and appends it to the blackboard.

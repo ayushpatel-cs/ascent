@@ -78,40 +78,45 @@ Modeling guidance (optional, keep fast <3 min CPU):
 - DO NOT USE EARLY STOPPING for training your model. This will cause bugs and avoid it all possible costs.
 """
 
-# --- Orchestrator output format: one self-contained prompt to the Dev Agent ---
-ORCHESTRATOR_TASK_TEMPLATE = """\
-You are the Orchestrator.
+# --- Flexible Orchestrator: Adaptive planning based on context ---
+FLEXIBLE_ORCHESTRATOR_PROMPT = """\
+You are an AI Orchestrator managing a Kaggle competition solving process. Your job is to analyze the current state and decide what the Dev Agent should work on next.
 
-CRITICAL: Your task is to work on the Kaggle competition described below. Do NOT create unrelated test scripts, games, or demos. Focus ONLY on the competition problem.
+## Context
+- **Competition**: {problem_description}
+- **Current Iteration**: {current_iteration} of {total_iterations} 
+- **Iterations Remaining**: {iterations_remaining}
 
-Using the materials below, produce ONE concise, self-contained prompt addressed to the Dev Agent.
-
-CRITICAL ITERATION RULE: If {iterations_remaining} > 3, you MUST NOT include any section about "Deliverables", "Constraints", submission.csv, or metrics.json requirements. Focus ONLY on exploration and analysis tasks.
-
-Requirements for your output:
-- List the usable local files the Dev Agent may read.
-- Include the Dev Context verbatim so that the agent has context on the problem.
-- Choose exactly ONE concrete next task that moves forward given the Blackboard
-  (avoid repeating prior attempts; if the last run failed, first instruct a targeted fix).
-- Consider any visualizations or plots from previous iterations when planning the next task.
-- Consider iteration planning: {iterations_remaining} iterations remain before final submission.
-  * Early iterations (>3 remaining): prioritize data exploration, feature engineering, baseline models. Focus on understanding data patterns and generating insights rather than submission requirements.
-  * Mid iterations (2-3 remaining): focus on model optimization, ensemble methods, hyperparameter tuning. Begin incorporating submission format requirements.
-  * Final iterations (≤1 remaining): ensure robust final model with best performance and strict adherence to submission format.
-- Specify deliverables based on iteration stage:
-  * Early iterations (>3 remaining): Do NOT require submission.csv or metrics.json. Focus on analysis outputs, feature insights, data exploration.
-  * Later iterations (≤3 remaining): Include submission.csv and metrics.json requirements.
-  * All iterations: CPU-only, deterministic, no network or installs; use numpy/pandas/sklearn (LGBM/XGB only if present).
-- Keep it ≤ 500 words. No meta-commentary about your reasoning.
-- Output ONLY the final prompt text (no JSON, no code fences).
-- CRITICAL: With {iterations_remaining} iterations remaining, if this number is >3, you MUST COMPLETELY OMIT any deliverables section. No submission.csv, no metrics.json, no constraints list. Focus purely on exploration tasks.
-
-=== Problem ===
-{problem_description}
-
-=== Blackboard (latest summary) ===
+## Current Progress (Blackboard)
 {blackboard}
 
-=== Dev Context (starter) ===
-{dev_description}
+## Your Task
+Based on the current state, decide what the Dev Agent should focus on next. Consider:
+
+1. **What has been accomplished so far?** (from blackboard)
+2. **What critical gaps remain?** (data understanding, features, models, validation)
+3. **How much time/iterations do we have left?** (plan accordingly)
+4. **What would provide the most value right now?**
+
+## Stage-Based Strategy
+- **Early Stage**: Focus on exploration, understanding data patterns, feature engineering, baseline models
+- **Mid Stage**: Model optimization, ensemble methods, hyperparameter tuning
+- **Final Stage**: Robust final model, submission preparation
+
+## Output Format
+Provide a clear, specific task for the Dev Agent. Include:
+- A brief context of where we are
+- One specific, actionable task
+- What outputs/files to create (exploration plots, models, submissions, etc.)
+- Any specific technical guidance
+
+Be adaptive and intelligent - don't follow rigid templates. Make decisions based on what makes sense given our current state and remaining iterations.
+
+Your response should be a direct instruction to the Dev Agent, starting with the dev context and then your specific task.
+
+## Dev Context (include this exactly):
+{dev_context}
+
+## Your Specific Task:
+[Your adaptive instruction based on current state and iteration stage]
 """

@@ -135,7 +135,7 @@ class Interpreter:
     ) -> None:
         self.child_proc_setup(result_outq)
 
-        global_scope: dict = {}
+        global_scope: dict = {"__name__": "__main__"}
         while True:
             code = code_inq.get()
             os.chdir(str(self.working_dir))
